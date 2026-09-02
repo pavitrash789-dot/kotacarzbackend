@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% set heading = "New agreement" %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" onsubmit="prepareSignatures()">
+<div class="wizard">
+  <button type="button" class="step active" onclick="goStep(1)">1 Customer</button>
+  <button type="button" class="step" onclick="goStep(2)">2 Vehicle</button>
+  <button type="button" class="step" onclick="goStep(3)">3 Rental</button>
+  <button type="button" class="step" onclick="goStep(4)">4 Payment</button>
+  <button type="button" class="step" onclick="goStep(5)">5 Inspection</button>
+  <button type="button" class="step" onclick="goStep(6)">6 Signatures</button>
+</div>
+
+<section class="panel step-panel" data-step="1">
+<h2>Customer details</h2>
+<div class="grid two">
+<label>Hire name *<input name="hire_name" required></label>
+<label>Father's name<input name="father_name"></label>
+<label>Mobile *<input name="mobile" required inputmode="numeric"></label>
+<label>Licence number<input name="licence_no"></label>
+</div>
+<label>Address<textarea name="address" rows="3"></textarea></label>
+<h3>ID & driving licence</h3>
+<div class="grid three">
+<label>Aadhaar / ID<input type="file" name="aadhaar" accept="image/*,.pdf"></label>
+<label>Licence front<input type="file" name="licence_front" accept="image/*,.pdf"></label>
+<label>Licence back<input type="file" name="licence_back" accept="image/*,.pdf"></label>
+</div>
+<div class="nav-buttons"><span></span><button type="button" class="button" onclick="goStep(2)">Next →</button></div>
+</section>
+
+<section class="panel step-panel" data-step="2">
+<h2>Vehicle</h2>
+<div class="grid two">
+<label>Car model<input name="car_model" placeholder="e.g. Hyundai Creta SX"></label>
+<label>Car registration<input name="car_reg" placeholder="e.g. RJ20CA1234"></label>
+</div>
+<div class="nav-buttons"><button type="button" class="ghost" onclick="goStep(1)">← Back</button><button type="button" class="button" onclick="goStep(3)">Next →</button></div>
+</section>
+
+<section class="panel step-panel" data-step="3">
+<h2>Rental</h2>
+<div class="grid three">
+<label>Start date<input type="date" name="start_date"></label>
+<label>Reporting time<input type="time" name="reporting_time"></label>
+<label>Expected return date<input type="date" name="return_date"></label>
+<label>Return time<input type="time" name="return_time"></label>
+<label>End time<input type="time" name="end_time"></label>
+<label>Start KM<input name="start_km"></label>
+<label>End KM<input name="end_km"></label>
+<label>Fuel at start<input name="fuel_start"></label>
+<label>Fuel at return<input name="fuel_end"></label>
+</div>
+<div class="nav-buttons"><button type="button" class="ghost" onclick="goStep(2)">← Back</button><button type="button" class="button" onclick="goStep(4)">Next →</button></div>
+</section>
+
+<section class="panel step-panel" data-step="4">
+<h2>Payment</h2>
+<div class="grid two">
+<label>Rental amount (INR)<input type="number" step="0.01" name="rental_amount"></label>
+<label>Security deposit (INR)<input type="number" step="0.01" name="security_deposit"></label>
+<label>Payment mode<select name="payment_mode"><option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option></select></label>
+<label>Payment status<select name="payment_status"><option>Paid</option><option>Part Paid</option><option>Pending</option></select></label>
+</div>
+<div class="nav-buttons"><button type="button" class="ghost" onclick="goStep(3)">← Back</button><button type="button" class="button" onclick="goStep(5)">Next →</button></div>
+</section>
+
+<section class="panel step-panel" data-step="5">
+<h2>Inspection / notes</h2>
+<label>Existing damage / inspection notes<textarea name="notes" rows="6" placeholder="Mention scratches, dents, tyre condition, fuel, accessories, etc."></textarea></label>
+<div class="nav-buttons"><button type="button" class="ghost" onclick="goStep(4)">← Back</button><button type="button" class="button" onclick="goStep(6)">Next →</button></div>
+</section>
+
+<section class="panel step-panel" data-step="6">
+<h2>Signatures</h2>
+<div class="grid two">
+<div><label>Hirer signature</label><canvas id="customerCanvas" class="signature"></canvas><button type="button" class="ghost" onclick="clearCanvas('customerCanvas')">Clear</button><input type="hidden" name="customer_signature" id="customer_signature"></div>
+<div><label>Witness signature</label><canvas id="witnessCanvas" class="signature"></canvas><button type="button" class="ghost" onclick="clearCanvas('witnessCanvas')">Clear</button><input type="hidden" name="witness_signature" id="witness_signature"></div>
+</div>
+<label>Witness name<input name="witness_name"></label>
+<div class="terms"><b>Confirmation</b><br>I have read the terms and conditions and agree to the liabilities and conditions of the rental agreement.</div>
+<div class="nav-buttons"><button type="button" class="ghost" onclick="goStep(5)">← Back</button><button class="button large" type="submit">Create Agreement & Generate PDF →</button></div>
+</section>
+</form>
+
+<script>
+let currentStep=1;
+function goStep(n){
+  currentStep=n;
+  document.querySelectorAll(".step-panel").forEach(x=>x.style.display=(x.dataset.step==n?"block":"none"));
+  document.querySelectorAll(".step").forEach((x,i)=>x.classList.toggle("active",i+1===n));
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function setupCanvas(id){
+ const c=document.getElementById(id), ctx=c.getContext("2d");
+ function resize(){c.width=c.clientWidth*2;c.height=180*2;ctx.setTransform(2,0,0,2,0,0);ctx.lineWidth=2;ctx.lineCap="round";}
+ resize();
+ let drawing=false;
+ function pos(e){const r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+ c.addEventListener("pointerdown",e=>{drawing=true;const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);c.setPointerCapture(e.pointerId);});
+ c.addEventListener("pointermove",e=>{if(!drawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+ c.addEventListener("pointerup",()=>drawing=false);
+}
+function clearCanvas(id){const c=document.getElementById(id);c.getContext("2d").clearRect(0,0,c.width,c.height);}
+function prepareSignatures(){
+ document.getElementById("customer_signature").value=document.getElementById("customerCanvas").toDataURL("image/png");
+ document.getElementById("witness_signature").value=document.getElementById("witnessCanvas").toDataURL("image/png");
+}
+setupCanvas("customerCanvas"); setupCanvas("witnessCanvas"); goStep(1);
+</script>
+{% endblock %}
