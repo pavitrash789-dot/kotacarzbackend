@@ -1,11 +1,10 @@
 import { Router, Response } from "express";
-import path from "path";
 import Agreement from "../models/Agreement";
 import { authenticate, authorize, AuthRequest } from "../middleware/auth";
-import { uploadAgreementFiles } from "../middleware/upload";
+import { uploadAgreementFiles, uploadToCloudinary } from "../middleware/upload";
+import { syncVehicleStatuses } from "../utils/syncVehicleStatuses";
 
 const router = Router();
-const UPLOADS_DIR = path.join(__dirname, "../../uploads");
 
 // GET /api/agreements - List with search and pagination
 router.get(
@@ -83,49 +82,7 @@ router.get(
   }
 );
 
-// GET /api/agreements/:id/files/:filename - Serve uploaded files
-router.get(
-  "/:id/files/:filename",
-  authenticate,
-  authorize("agreements_view"),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const filename = req.params.filename as string;
-      const filePath = path.join(UPLOADS_DIR, filename);
-
-      // Security: prevent path traversal
-      if (!filePath.startsWith(UPLOADS_DIR)) {
-        res.status(403).json({ error: "Access denied" });
-        return;
-      }
-
-      const fs = require("fs");
-      if (!fs.existsSync(filePath)) {
-        res.status(404).json({ error: "File not found" });
-        return;
-      }
-
-      // Set appropriate content type
-      const ext = path.extname(filename).toLowerCase();
-      const contentTypes: Record<string, string> = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".pdf": "application/pdf",
-      };
-
-      const contentType = contentTypes[ext] || "application/octet-stream";
-      res.setHeader("Content-Type", contentType);
-      res.sendFile(filePath);
-    } catch (error) {
-      res.status(500).json({ error: "Server error" });
-    }
-  }
-);
-
-// POST /api/agreements - Create with file uploads
+// POST /api/agreements - Create with file uploads (Cloudinary)
 router.post(
   "/",
   authenticate,
@@ -149,11 +106,34 @@ router.post(
         const now = new Date();
         const agreementNo = `KC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
 
-        // Get file paths from multer
+        // Upload files to Cloudinary
         const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-        const aadhaarFile = files?.aadhaar?.[0]?.filename || "";
-        const licenceFrontFile = files?.licenceFront?.[0]?.filename || "";
-        const licenceBackFile = files?.licenceBack?.[0]?.filename || "";
+
+        let aadhaarFile = "";
+        let licenceFrontFile = "";
+        let licenceBackFile = "";
+
+        if (files?.aadhaar?.[0]) {
+          const result = await uploadToCloudinary(
+            files.aadhaar[0].buffer,
+            `${agreementNo}_aadhaar_${files.aadhaar[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          aadhaarFile = result.url;
+        }
+        if (files?.licenceFront?.[0]) {
+          const result = await uploadToCloudinary(
+            files.licenceFront[0].buffer,
+            `${agreementNo}_licenceFront_${files.licenceFront[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          licenceFrontFile = result.url;
+        }
+        if (files?.licenceBack?.[0]) {
+          const result = await uploadToCloudinary(
+            files.licenceBack[0].buffer,
+            `${agreementNo}_licenceBack_${files.licenceBack[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          licenceBackFile = result.url;
+        }
 
         const agreement = new Agreement({
           agreementNo,
@@ -188,6 +168,7 @@ router.post(
         });
 
         await agreement.save();
+        await syncVehicleStatuses();
         res.status(201).json(agreement);
       } catch (error) {
         console.error("Agreement creation error:", error);
@@ -197,26 +178,85 @@ router.post(
   }
 );
 
-// PUT /api/agreements/:id
+// PUT /api/agreements/:id - Update with optional file uploads (Cloudinary)
 router.put(
   "/:id",
   authenticate,
   authorize("agreements_edit"),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const agreement = await Agreement.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true }
-      );
-      if (!agreement) {
-        res.status(404).json({ error: "Agreement not found" });
+  (req: AuthRequest, res: Response) => {
+    uploadAgreementFiles(req, res, async (err) => {
+      if (err) {
+        if (err instanceof require("multer").MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            res.status(400).json({ error: "File size must be less than 10MB" });
+            return;
+          }
+          res.status(400).json({ error: `Upload error: ${err.message}` });
+          return;
+        }
+        res.status(400).json({ error: err.message });
         return;
       }
-      res.json(agreement);
-    } catch (error) {
-      res.status(500).json({ error: "Server error" });
-    }
+
+      try {
+        const updateData: any = { ...req.body };
+
+        // Parse numeric fields
+        if (updateData.rentalAmount !== undefined) {
+          updateData.rentalAmount = parseFloat(updateData.rentalAmount) || 0;
+        }
+        if (updateData.securityDeposit !== undefined) {
+          updateData.securityDeposit = parseFloat(updateData.securityDeposit) || 0;
+        }
+
+        // Remove fields that shouldn't be updated directly
+        delete updateData._id;
+        delete updateData.agreementNo;
+        delete updateData.createdBy;
+        delete updateData.createdAt;
+        delete updateData.updatedAt;
+
+        // Upload new files to Cloudinary if provided
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+
+        if (files?.aadhaar?.[0]) {
+          const result = await uploadToCloudinary(
+            files.aadhaar[0].buffer,
+            `${req.params.id}_aadhaar_${files.aadhaar[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          updateData.aadhaarFile = result.url;
+        }
+        if (files?.licenceFront?.[0]) {
+          const result = await uploadToCloudinary(
+            files.licenceFront[0].buffer,
+            `${req.params.id}_licenceFront_${files.licenceFront[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          updateData.licenceFrontFile = result.url;
+        }
+        if (files?.licenceBack?.[0]) {
+          const result = await uploadToCloudinary(
+            files.licenceBack[0].buffer,
+            `${req.params.id}_licenceBack_${files.licenceBack[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          updateData.licenceBackFile = result.url;
+        }
+
+        const agreement = await Agreement.findByIdAndUpdate(
+          req.params.id,
+          updateData,
+          { new: true }
+        );
+        if (!agreement) {
+          res.status(404).json({ error: "Agreement not found" });
+          return;
+        }
+        await syncVehicleStatuses();
+        res.json(agreement);
+      } catch (error) {
+        console.error("Agreement update error:", error);
+        res.status(500).json({ error: "Server error" });
+      }
+    });
   }
 );
 
@@ -232,6 +272,7 @@ router.delete(
         res.status(404).json({ error: "Agreement not found" });
         return;
       }
+      await syncVehicleStatuses();
       res.json({ message: "Agreement deleted" });
     } catch (error) {
       res.status(500).json({ error: "Server error" });

@@ -1,27 +1,8 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+import cloudinary from "../config/cloudinary";
 
-const UPLOADS_DIR = path.join(__dirname, "../../uploads");
-
-// Ensure uploads directory exists
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
-  filename: (req, file, cb) => {
-    const agreementNo = req.body.agreementNo || "unknown";
-    const fieldname = file.fieldname;
-    const ext = path.extname(file.originalname);
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, "_");
-    cb(null, `${agreementNo}_${fieldname}_${safeName}`);
-  },
-});
+// Use memory storage so we can upload buffers to Cloudinary
+const storage = multer.memoryStorage();
 
 // File filter - allow images and PDFs
 const fileFilter = (
@@ -52,6 +33,29 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB
   },
 });
+
+// Helper: upload a buffer to Cloudinary
+export async function uploadToCloudinary(
+  fileBuffer: Buffer,
+  filename: string,
+  folder: string = "kota-carz/agreements"
+): Promise<{ url: string; publicId: string }> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id: filename,
+        resource_type: "auto",
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        if (!result) return reject(new Error("Upload failed"));
+        resolve({ url: result.secure_url, publicId: result.public_id });
+      }
+    );
+    stream.end(fileBuffer);
+  });
+}
 
 // Export middleware for multiple files
 export const uploadAgreementFiles = upload.fields([

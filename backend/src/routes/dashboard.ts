@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import Agreement from "../models/Agreement";
 import Vehicle from "../models/Vehicle";
 import { authenticate, AuthRequest } from "../middleware/auth";
+import { syncVehicleStatuses } from "../utils/syncVehicleStatuses";
 
 const router = Router();
 
@@ -11,11 +12,14 @@ router.get(
   authenticate,
   async (req: AuthRequest, res: Response) => {
     try {
+      // Sync vehicle statuses based on active agreements
+      await syncVehicleStatuses();
+
       const [totalAgreements, availableVehicles, outVehicles, totalDeposits] =
         await Promise.all([
           Agreement.countDocuments(),
           Vehicle.countDocuments({ status: "Available" }),
-          Vehicle.countDocuments({ status: { $ne: "Available" } }),
+          Vehicle.countDocuments({ status: "Out" }),
           Agreement.aggregate([
             { $group: { _id: null, total: { $sum: "$securityDeposit" } } },
           ]),
