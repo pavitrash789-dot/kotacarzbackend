@@ -10,9 +10,6 @@ node_modules/
 dist/
 build/
 
-# Vite
-frontend/.vite/
-
 # TypeScript
 *.tsbuildinfo
 
@@ -33,9 +30,3 @@ Thumbs.db
 # Uploads (sensitive user documents)
 backend/uploads/
 backend/generated/
-
-# Python (legacy)
-__pycache__/
-*.pyc
-.venv/
-kota_caz.db
