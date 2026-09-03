@@ -119,7 +119,16 @@ router.get(
       const users = await User.find()
         .select("-password")
         .sort({ createdAt: -1 });
-      res.json(users);
+      res.json(
+        users.map((u) => ({
+          id: u._id,
+          username: u.username,
+          fullName: u.fullName,
+          role: u.role,
+          permissions: u.permissions,
+          createdAt: u.createdAt,
+        }))
+      );
     } catch (error) {
       res.status(500).json({ error: "Server error" });
     }
@@ -145,7 +154,13 @@ router.put(
         return;
       }
 
-      res.json(user);
+      res.json({
+        id: user._id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        permissions: user.permissions,
+      });
     } catch (error) {
       res.status(500).json({ error: "Server error" });
     }
@@ -159,11 +174,28 @@ router.delete(
   adminOnly,
   async (req: AuthRequest, res: Response) => {
     try {
-      const user = await User.findByIdAndDelete(req.params.id);
-      if (!user) {
+      // Prevent admin from deleting themselves
+      if (req.user!._id.toString() === req.params.id) {
+        res.status(400).json({ error: "Cannot delete your own account" });
+        return;
+      }
+
+      // Prevent deleting the last admin
+      const targetUser = await User.findById(req.params.id);
+      if (!targetUser) {
         res.status(404).json({ error: "User not found" });
         return;
       }
+
+      if (targetUser.role === "admin") {
+        const adminCount = await User.countDocuments({ role: "admin" });
+        if (adminCount <= 1) {
+          res.status(400).json({ error: "Cannot delete the last admin user" });
+          return;
+        }
+      }
+
+      await User.findByIdAndDelete(req.params.id);
       res.json({ message: "User deleted" });
     } catch (error) {
       res.status(500).json({ error: "Server error" });

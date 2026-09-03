@@ -112,6 +112,7 @@ router.post(
         let aadhaarFile = "";
         let licenceFrontFile = "";
         let licenceBackFile = "";
+        let carPhoto = "";
 
         if (files?.aadhaar?.[0]) {
           const result = await uploadToCloudinary(
@@ -134,6 +135,13 @@ router.post(
           );
           licenceBackFile = result.url;
         }
+        if (files?.carPhoto?.[0]) {
+          const result = await uploadToCloudinary(
+            files.carPhoto[0].buffer,
+            `${agreementNo}_carPhoto_${files.carPhoto[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          carPhoto = result.url;
+        }
 
         const agreement = new Agreement({
           agreementNo,
@@ -145,6 +153,7 @@ router.post(
           aadhaarFile,
           licenceFrontFile,
           licenceBackFile,
+          carPhoto,
           carReg: req.body.carReg || "",
           carModel: req.body.carModel || "",
           startDate: req.body.startDate || "",
@@ -239,6 +248,13 @@ router.put(
             `${req.params.id}_licenceBack_${files.licenceBack[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
           );
           updateData.licenceBackFile = result.url;
+        }
+        if (files?.carPhoto?.[0]) {
+          const result = await uploadToCloudinary(
+            files.carPhoto[0].buffer,
+            `${req.params.id}_carPhoto_${files.carPhoto[0].originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`
+          );
+          updateData.carPhoto = result.url;
         }
 
         const agreement = await Agreement.findByIdAndUpdate(

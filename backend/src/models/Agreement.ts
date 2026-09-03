@@ -10,6 +10,7 @@ export interface IAgreement extends Document {
   aadhaarFile: string;
   licenceFrontFile: string;
   licenceBackFile: string;
+  carPhoto: string;
   carReg: string;
   carModel: string;
   startDate: string;
@@ -44,6 +45,7 @@ const agreementSchema = new Schema<IAgreement>(
     licenceNo: { type: String, default: "" },
     aadhaarFile: { type: String, default: "" },
     licenceFrontFile: { type: String, default: "" },
+    carPhoto: { type: String, default: "" },
     licenceBackFile: { type: String, default: "" },
     carReg: { type: String, default: "" },
     carModel: { type: String, default: "" },

@@ -62,6 +62,7 @@ export const uploadAgreementFiles = upload.fields([
   { name: "aadhaar", maxCount: 1 },
   { name: "licenceFront", maxCount: 1 },
   { name: "licenceBack", maxCount: 1 },
+  { name: "carPhoto", maxCount: 1 },
 ]);
 
 export default upload;
