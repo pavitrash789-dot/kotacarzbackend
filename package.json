@@ -1,0 +1,12 @@
+{
+  "name": "pushpa-paridhan",
+  "version": "1.0.0",
+  "description": "Pushpa Paridhan - Saree & Ethnic Wear Online Store",
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && node server.js",
+    "frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build"
+  }
+}
